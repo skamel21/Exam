@@ -13,10 +13,6 @@ use Symfony\Component\Routing\Attribute\Route;
 
 class HamsterController extends AbstractController
 {
-    /**
-     * O1 – GET /api/hamsters
-     * Récupère tous les hamsters appartenant à l'utilisateur connecté
-     */
     #[Route('/api/hamsters', name: 'hamster_list', methods: ['GET'])]
     public function list(EntityManagerInterface $em): JsonResponse
     {
@@ -44,11 +40,6 @@ class HamsterController extends AbstractController
         return $this->json($data, Response::HTTP_OK);
     }
 
-    /**
-     * O2 – GET /api/hamsters/{id}
-     * Récupère les infos d'un hamster spécifique appartenant à l'utilisateur.
-     * Un admin peut voir n'importe quel hamster.
-     */
     #[Route('/api/hamsters/{id}', name: 'hamsters_by_id', methods: ['GET'])]
     public function getHamstersById(Hamster $hamsters): JsonResponse
     {
@@ -57,12 +48,6 @@ class HamsterController extends AbstractController
         ], Response::HTTP_OK, [], ['groups' => 'AllHamsters']);
     }
 
-    /**
-     * O3 – POST /api/hamsters/reproduce
-     * Body: { "idHamster1": xx, "idHamster2": yy }
-     * Crée un nouveau hamster avec un nom random.
-     * Retourne les infos du hamster créé.
-     */
     #[Route('/api/hamsters/reproduce', name: 'hamster_reproduce', methods: ['POST'])]
     public function reproduce(Request $request, EntityManagerInterface $em): JsonResponse
     {
@@ -94,8 +79,7 @@ class HamsterController extends AbstractController
         if (!$h1 || !$h2) {
             return $this->json(['error' => 'Hamster(s) introuvable(s)'], Response::HTTP_NOT_FOUND);
         }
-
-        // L'admin peut utiliser n'importe quels hamsters, sinon ils doivent appartenir au user
+        
         if (
             !$this->isGranted('ROLE_ADMIN') &&
             ($h1->getOwner() !== $user || $h2->getOwner() !== $user)
@@ -107,7 +91,6 @@ class HamsterController extends AbstractController
             return $this->json(['error' => 'Les deux hamsters doivent être actifs'], Response::HTTP_BAD_REQUEST);
         }
 
-        // Création du bébé
         $faker  = \Faker\Factory::create('fr_FR');
         $baby   = new Hamster();
         $baby->setOwner($user);
@@ -130,12 +113,7 @@ class HamsterController extends AbstractController
         ], Response::HTTP_CREATED);
     }
 
-    /**
-     * O4 – POST /api/hamsters/{id}/feed
-     * Nourrit le hamster (hunger → 100).
-     * Coût : (100 - hunger actuel) en gold.
-     * Retourne l'argent qui reste à l'utilisateur.
-     */
+
     #[Route('/api/hamsters/{id}/feed', name: 'hamster_feed', methods: ['POST'])]
     public function feed(Hamster $hamster, EntityManagerInterface $em): JsonResponse
     {
@@ -189,10 +167,7 @@ class HamsterController extends AbstractController
         ], Response::HTTP_OK);
     }
 
-    /**
-     * O5 – POST /api/hamsters/{id}/sell
-     * Vend le hamster pour 300 gold, puis le retire de l'inventaire.
-     */
+
     #[Route('/api/hamsters/{id}/sell', name: 'hamster_sell', methods: ['POST'])]
     public function sell(Hamster $hamster, EntityManagerInterface $em): JsonResponse
     {
@@ -220,11 +195,6 @@ class HamsterController extends AbstractController
         ], Response::HTTP_OK);
     }
 
-    /**
-     * O6 – POST /api/hamster/sleep/{nbDays}
-     * Fait vieillir tous les hamsters de l'utilisateur de nbDays jours
-     * et réduit leur hunger de nbDays. Si age > 500 ou hunger < 0 → active = false.
-     */
     #[Route('/api/hamster/sleep/{nbDays}', name: 'hamster_sleep', methods: ['POST'])]
     public function sleep(int $nbDays, EntityManagerInterface $em): JsonResponse
     {
@@ -266,7 +236,6 @@ class HamsterController extends AbstractController
         ], Response::HTTP_OK);
     }
 
-    /**O7 – PUT /api/hamsters/{id}/rename*/
     #[Route('/api/hamsters/{id}/rename', name: 'hamster_rename', methods: ['PUT'])]
     public function rename(Hamster $hamster, Request $request, EntityManagerInterface $em): JsonResponse
     {
