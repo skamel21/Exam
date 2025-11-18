@@ -49,30 +49,12 @@ class HamsterController extends AbstractController
      * Récupère les infos d'un hamster spécifique appartenant à l'utilisateur.
      * Un admin peut voir n'importe quel hamster.
      */
-    #[Route('/api/hamsters/{id}', name: 'hamster_show', methods: ['GET'])]
-    public function show(Hamster $hamster): JsonResponse
+    #[Route('/api/hamsters/{id}', name: 'hamsters_by_id', methods: ['GET'])]
+    public function getHamstersById(Hamster $hamsters): JsonResponse
     {
-        /** @var User|null $user */
-        $user = $this->getUser();
-
-        if (!$user instanceof User) {
-            return $this->json(['error' => 'Utilisateur non connecté'], Response::HTTP_UNAUTHORIZED);
-        }
-
-        if (!$this->isGranted('ROLE_ADMIN') && $hamster->getOwner() !== $user) {
-            return $this->json(['error' => 'Ce hamster ne vous appartient pas'], Response::HTTP_FORBIDDEN);
-        }
-
-        $data = [
-            'id'     => $hamster->getId(),
-            'name'   => $hamster->getName(),
-            'genre'  => $hamster->getGenre(),
-            'age'    => $hamster->getAge(),
-            'hunger' => $hamster->getHunger(),
-            'active' => $hamster->isActive(),
-        ];
-
-        return $this->json($data, Response::HTTP_OK);
+        return $this->json([
+            'hamsters' => $hamsters,
+        ], Response::HTTP_OK, [], ['groups' => 'AllHamsters']);
     }
 
     /**
@@ -284,12 +266,7 @@ class HamsterController extends AbstractController
         ], Response::HTTP_OK);
     }
 
-    /**
-     * O7 – PUT /api/hamsters/{id}/rename
-     * Renomme un hamster possédé par l'utilisateur.
-     * L'admin peut renommer n'importe quel hamster.
-     * Body: { "name": "NouveauNom" }
-     */
+    /**O7 – PUT /api/hamsters/{id}/rename*/
     #[Route('/api/hamsters/{id}/rename', name: 'hamster_rename', methods: ['PUT'])]
     public function rename(Hamster $hamster, Request $request, EntityManagerInterface $em): JsonResponse
     {
