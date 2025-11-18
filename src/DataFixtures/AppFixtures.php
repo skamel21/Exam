@@ -20,43 +20,33 @@ class AppFixtures extends Fixture
 
     public function load(ObjectManager $manager): void
     {
-        // 1) Normal user
+        $faker = Factory::create('fr_FR');
+
         $user = $this->createUser('user@sf.com', 'password', ['ROLE_USER']);
         $manager->persist($user);
+        $this->createFourHamstersForUser($user, $manager, $faker);
 
-        // 2) Admin user
         $admin = $this->createUser('admin@sf.com', 'admin', ['ROLE_ADMIN']);
         $manager->persist($admin);
+        $this->createFourHamstersForUser($admin, $manager, $faker);
 
-        // 3) Create some hamsters for the normal user
-        for ($i = 0; $i < 4; $i++) {
-            $hamster = $this->createHamster($user);
-            $manager->persist($hamster);
-        }
-
-        // 4) Create some hamsters for the admin
-        for ($i = 0; $i < 4; $i++) {
-            $hamster = $this->createHamster($admin);
-            $manager->persist($hamster);
-        }
-
-        // flush une seule fois à la fin, c’est mieux
         $manager->flush();
     }
 
-    private function createHamster(User $owner): Hamster
+    private function createFourHamstersForUser(User $owner, ObjectManager $manager, \Faker\Generator $faker): void
     {
-    $faker = Factory::create('fr_FR');
+        $genres = ['m', 'm', 'f', 'f'];
 
-    $hamster = new Hamster();
-    $hamster->setOwner($owner);
-    $hamster->setName($faker->firstName());
-    $hamster->setGenre($faker->randomElement(['m', 'f']));
-    $hamster->setAge($faker->numberBetween(0, 500));
-    $hamster->setHunger($faker->numberBetween(0, 100));
-    $hamster->setActive(true);
-
-    return $hamster;
+        foreach ($genres as $g) {
+            $hamster = new Hamster();
+            $hamster->setOwner($owner);
+            $hamster->setName($faker->firstName());
+            $hamster->setGenre($g);
+            $hamster->setAge(0);
+            $hamster->setHunger(100);
+            $hamster->setActive(true);
+            $manager->persist($hamster);
+        }
     }
 
     private function createUser(string $email, string $password, array $roles): User
@@ -65,9 +55,7 @@ class AppFixtures extends Fixture
         $user->setEmail($email);
         $user->setRoles($roles);
         $user->setPassword($this->hasher->hashPassword($user, $password));
-
-        // si tu as un champ gold:
-        // $user->setGold(500);
+        $user->setGold(500);
 
         return $user;
     }

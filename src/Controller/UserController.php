@@ -24,84 +24,69 @@ class UserController extends AbstractController
     ): JsonResponse {
         $data = json_decode($request->getContent(), true);
 
-        $email    = $data['email'] ?? null;
-        $password = $data['password'] ?? null;
+    $email    = $data['email'] ?? null;
+    $password = $data['password'] ?? null;
 
-       
-        if (!$email || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            return $this->json(
-                ['error' => 'Email invalide'],
-                Response::HTTP_BAD_REQUEST
-            );
-        }
+    if (!$email || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        return $this->json(['error' => 'Email invalide'], Response::HTTP_BAD_REQUEST);
+    }
 
-        if (!$password || strlen($password) < 8) {
-            return $this->json(
-                ['error' => 'Mot de passe trop court (min 8 caractères)'],
-                Response::HTTP_BAD_REQUEST
-            );
-        }
+    if (!$password || strlen($password) < 8) {
+        return $this->json(['error' => 'Mot de passe trop court (min 8 caractères)'], Response::HTTP_BAD_REQUEST);
+    }
 
-        // email déjà utilisé ?
-        $existing = $em->getRepository(User::class)->findOneBy(['email' => $email]);
-        if ($existing) {
-            return $this->json(
-                ['error' => 'Cet email est déjà utilisé'],
-                Response::HTTP_BAD_REQUEST
-            );
-        }
+    $existing = $em->getRepository(User::class)->findOneBy(['email' => $email]);
+    if ($existing) {
+        return $this->json(['error' => 'Cet email est déjà utilisé'], Response::HTTP_BAD_REQUEST);
+    }
 
-        // --- création de l'utilisateur ---
-        $user = new User();
-        $user->setEmail($email);
+    $user = new User();
+    $user->setEmail($email);
+    $hashedPassword = $passwordHasher->hashPassword($user, $password);
+    $user->setPassword($hashedPassword);
+    $user->setRoles(['ROLE_USER']);
+    $user->setGold(500);
 
-        $hashedPassword = $passwordHasher->hashPassword($user, $password);
-        $user->setPassword($hashedPassword);
+    $em->persist($user);
 
-        $user->setRoles(['ROLE_USER']);   
-        $user->setGold(500);              
+    $faker  = \Faker\Factory::create('fr_FR');
+    $genres = ['m', 'm', 'f', 'f'];
 
-        $em->persist($user);
+    foreach ($genres as $g) {
+        $hamster = new Hamster();
+        $hamster->setName($faker->firstName());
+        $hamster->setGenre($g);
+        $hamster->setAge(0);
+        $hamster->setHunger(100);
+        $hamster->setActive(true);
 
-        $faker  = Factory::create('fr_FR');
-        $genres = ['m', 'm', 'f', 'f'];
+        $user->addHamster($hamster);
+        $em->persist($hamster);
+    }
 
-        foreach ($genres as $g) {
-            $hamster = new Hamster();
-            $hamster->setOwner($user);
-            $hamster->setName($faker->firstName());
-            $hamster->setGenre($g);       // ton champ s’appelle "genre"
-            $hamster->setAge(0);
-            $hamster->setHunger(100);
-            $hamster->setActive(true);
+    $em->flush();
 
-            $em->persist($hamster);
-        }
-
-        $em->flush();
-
-        // --- réponse : user + hamsters ---
-        $hamstersArray = [];
-        foreach ($user->getHamsters() as $h) {
-            $hamstersArray[] = [
-                'id'     => $h->getId(),
-                'name'   => $h->getName(),
-                'genre'  => $h->getGenre(),
-                'age'    => $h->getAge(),
-                'hunger' => $h->getHunger(),
-                'active' => $h->isActive(),
-            ];
-        }
-
-        $responseData = [
-            'id'       => $user->getId(),
-            'email'    => $user->getEmail(),
-            'gold'     => $user->getGold(),
-            'roles'    => $user->getRoles(),
-            'hamsters' => $hamstersArray,
+    $hamstersArray = [];
+    foreach ($user->getHamsters() as $h) {
+        $hamstersArray[] = [
+            'id'     => $h->getId(),
+            'name'   => $h->getName(),
+            'genre'  => $h->getGenre(),
+            'age'    => $h->getAge(),
+            'hunger' => $h->getHunger(),
+            'active' => $h->isActive(),
         ];
+    }
 
-        return $this->json($responseData, Response::HTTP_CREATED);
+    $responseData = [
+        'id'       => $user->getId(),
+        'email'    => $user->getEmail(),
+        'gold'     => $user->getGold(),
+        'roles'    => $user->getRoles(),
+        'hamsters' => $hamstersArray,
+    ];
+
+    return $this->json($responseData, Response::HTTP_CREATED);
     }
 
     #[Route('/api/delete/{id}', name: 'user_delete', methods: ['DELETE'])]

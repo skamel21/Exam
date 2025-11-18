@@ -5,6 +5,7 @@ namespace App\Controller;
 use App\Entity\Hamster;
 use App\Entity\User;
 use Doctrine\ORM\EntityManagerInterface;
+use Faker\Factory;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -21,6 +22,10 @@ class HamsterController extends AbstractController
 
         if (!$user instanceof User) {
             return $this->json(['error' => 'Utilisateur non connecté'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        if ($response = $this->checkGameOver($user)) {
+            return $response;
         }
 
         $hamsters = $em->getRepository(Hamster::class)->findBy(['owner' => $user]);
@@ -40,12 +45,34 @@ class HamsterController extends AbstractController
         return $this->json($data, Response::HTTP_OK);
     }
 
-    #[Route('/api/hamsters/{id}', name: 'hamsters_by_id', methods: ['GET'])]
-    public function getHamstersById(Hamster $hamsters): JsonResponse
+    #[Route('/api/hamsters/{id}', name: 'hamster_show', methods: ['GET'])]
+    public function getHamsterById(Hamster $hamster): JsonResponse
     {
-        return $this->json([
-            'hamsters' => $hamsters,
-        ], Response::HTTP_OK, [], ['groups' => 'AllHamsters']);
+        /** @var User|null $user */
+        $user = $this->getUser();
+
+        if (!$user instanceof User) {
+            return $this->json(['error' => 'Utilisateur non connecté'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        if ($response = $this->checkGameOver($user)) {
+            return $response;
+        }
+
+        if (!$this->isGranted('ROLE_ADMIN') && $hamster->getOwner() !== $user) {
+            return $this->json(['error' => 'Ce hamster ne vous appartient pas'], Response::HTTP_FORBIDDEN);
+        }
+
+        $data = [
+            'id'     => $hamster->getId(),
+            'name'   => $hamster->getName(),
+            'genre'  => $hamster->getGenre(),
+            'age'    => $hamster->getAge(),
+            'hunger' => $hamster->getHunger(),
+            'active' => $hamster->isActive(),
+        ];
+
+        return $this->json($data, Response::HTTP_OK);
     }
 
     #[Route('/api/hamsters/reproduce', name: 'hamster_reproduce', methods: ['POST'])]
@@ -56,6 +83,10 @@ class HamsterController extends AbstractController
 
         if (!$user instanceof User) {
             return $this->json(['error' => 'Utilisateur non connecté'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        if ($response = $this->checkGameOver($user)) {
+            return $response;
         }
 
         $data = json_decode($request->getContent(), true);
@@ -79,11 +110,8 @@ class HamsterController extends AbstractController
         if (!$h1 || !$h2) {
             return $this->json(['error' => 'Hamster(s) introuvable(s)'], Response::HTTP_NOT_FOUND);
         }
-        
-        if (
-            !$this->isGranted('ROLE_ADMIN') &&
-            ($h1->getOwner() !== $user || $h2->getOwner() !== $user)
-        ) {
+
+        if (!$this->isGranted('ROLE_ADMIN') && ($h1->getOwner() !== $user || $h2->getOwner() !== $user)) {
             return $this->json(['error' => 'Les hamsters doivent vous appartenir'], Response::HTTP_FORBIDDEN);
         }
 
@@ -91,16 +119,21 @@ class HamsterController extends AbstractController
             return $this->json(['error' => 'Les deux hamsters doivent être actifs'], Response::HTTP_BAD_REQUEST);
         }
 
-        $faker  = \Faker\Factory::create('fr_FR');
-        $baby   = new Hamster();
-        $baby->setOwner($user);
+        if ($h1->getGenre() === $h2->getGenre()) {
+            return $this->json(['error' => 'Les deux hamsters doivent être de sexe opposé'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $faker = Factory::create('fr_FR');
+        $baby  = new Hamster();
         $baby->setName($faker->firstName());
         $baby->setGenre($faker->randomElement(['m', 'f']));
         $baby->setAge(0);
         $baby->setHunger(100);
         $baby->setActive(true);
-
+        $user->addHamster($baby);
         $em->persist($baby);
+
+        $this->applyAutoAging($user, $em);
         $em->flush();
 
         return $this->json([
@@ -113,7 +146,6 @@ class HamsterController extends AbstractController
         ], Response::HTTP_CREATED);
     }
 
-
     #[Route('/api/hamsters/{id}/feed', name: 'hamster_feed', methods: ['POST'])]
     public function feed(Hamster $hamster, EntityManagerInterface $em): JsonResponse
     {
@@ -124,7 +156,10 @@ class HamsterController extends AbstractController
             return $this->json(['error' => 'Utilisateur non connecté'], Response::HTTP_UNAUTHORIZED);
         }
 
-        // Admin peut nourrir n'importe quel hamster, sinon il faut être owner
+        if ($response = $this->checkGameOver($user)) {
+            return $response;
+        }
+
         if (!$this->isGranted('ROLE_ADMIN') && $hamster->getOwner() !== $user) {
             return $this->json(['error' => 'Ce hamster ne vous appartient pas'], Response::HTTP_FORBIDDEN);
         }
@@ -152,6 +187,8 @@ class HamsterController extends AbstractController
 
         $em->persist($hamster);
         $em->persist($user);
+
+        $this->applyAutoAging($user, $em);
         $em->flush();
 
         return $this->json([
@@ -167,7 +204,6 @@ class HamsterController extends AbstractController
         ], Response::HTTP_OK);
     }
 
-
     #[Route('/api/hamsters/{id}/sell', name: 'hamster_sell', methods: ['POST'])]
     public function sell(Hamster $hamster, EntityManagerInterface $em): JsonResponse
     {
@@ -178,6 +214,10 @@ class HamsterController extends AbstractController
             return $this->json(['error' => 'Utilisateur non connecté'], Response::HTTP_UNAUTHORIZED);
         }
 
+        if ($response = $this->checkGameOver($user)) {
+            return $response;
+        }
+
         if (!$this->isGranted('ROLE_ADMIN') && $hamster->getOwner() !== $user) {
             return $this->json(['error' => 'Ce hamster ne vous appartient pas'], Response::HTTP_FORBIDDEN);
         }
@@ -185,8 +225,11 @@ class HamsterController extends AbstractController
         $currentGold = $user->getGold() ?? 0;
         $user->setGold($currentGold + 300);
 
+        $user->removeHamster($hamster);
         $em->remove($hamster);
         $em->persist($user);
+
+        $this->applyAutoAging($user, $em);
         $em->flush();
 
         return $this->json([
@@ -203,6 +246,10 @@ class HamsterController extends AbstractController
 
         if (!$user instanceof User) {
             return $this->json(['error' => 'Utilisateur non connecté'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        if ($response = $this->checkGameOver($user)) {
+            return $response;
         }
 
         if ($nbDays <= 0) {
@@ -246,6 +293,10 @@ class HamsterController extends AbstractController
             return $this->json(['error' => 'Utilisateur non connecté'], Response::HTTP_UNAUTHORIZED);
         }
 
+        if ($response = $this->checkGameOver($user)) {
+            return $response;
+        }
+
         if (!$this->isGranted('ROLE_ADMIN') && $hamster->getOwner() !== $user) {
             return $this->json(['error' => 'Ce hamster ne vous appartient pas'], Response::HTTP_FORBIDDEN);
         }
@@ -269,5 +320,38 @@ class HamsterController extends AbstractController
             'hunger' => $hamster->getHunger(),
             'active' => $hamster->isActive(),
         ], Response::HTTP_OK);
+    }
+
+    private function checkGameOver(User $user): ?JsonResponse
+    {
+        if (!$this->isGranted('ROLE_ADMIN') && $user->getGold() !== null && $user->getGold() < 0) {
+            return $this->json(
+                ['error' => 'Fin de jeu : votre solde de gold est inférieur à 0'],
+                Response::HTTP_BAD_REQUEST
+            );
+        }
+
+        return null;
+    }
+
+    private function applyAutoAging(User $user, EntityManagerInterface $em): void
+    {
+        foreach ($user->getHamsters() as $hamster) {
+            if (!$hamster->isActive()) {
+                continue;
+            }
+
+            $newAge    = $hamster->getAge() + 5;
+            $newHunger = $hamster->getHunger() - 5;
+
+            $hamster->setAge($newAge);
+            $hamster->setHunger($newHunger);
+
+            if ($newAge > 500 || $newHunger < 0) {
+                $hamster->setActive(false);
+            }
+
+            $em->persist($hamster);
+        }
     }
 }
